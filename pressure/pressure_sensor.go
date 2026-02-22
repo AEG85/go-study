@@ -1,33 +1,26 @@
 package pressure
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+	"sync"
+	"time"
 )
 
-type Coordinat struct {
-	x float64
-	y float64
-}
-
-var coordinates = map[int]Coordinat{
-	1: {X: 12, Y: 15},
-	2: {X: 13, Y: 16},
-	3: {X: 33, Y: 12.7},
-	4: {X: 2, Y: 17},
-	5: {X: 66, Y: 77},
-}
-
-func PressureSensor(pressureTransfer chan int64, sensorNumber int) {
+func PressureSensor(ctx context.Context, wg *sync.WaitGroup, meteoTransfer chan<- string) {
+	defer wg.Done()
+	sensorNumber := 0
 	for {
-		fmt.Println("Я датчик #", strconv.Itoa(sensorNumber), ". Давление ", strconv.Itoa)
+		sensorNumber++
+		select {
+		case <-ctx.Done():
+			fmt.Println("Отменяем сбор данных датчика Давления!")
+			return
+		case <-time.After(1 * time.Second):
+			coordinates := SensorCoordinates(sensorNumber)
+			sensorInfo := "Я датчик давления #" + strconv.Itoa(sensorNumber) + ". P " + strconv.Itoa(sensorNumber*10) + ". Мои координаты: X:" + strconv.FormatFloat(coordinates.X, 'f', -1, 64) + " Y:" + strconv.FormatFloat(coordinates.Y, 'f', -1, 64)
+			meteoTransfer <- sensorInfo
+		}
 	}
-}
-
-func SensorCoordinates(sensorIndex int) Coordinat {
-	coords, ok := coordinates[sensorIndex]
-	if !ok {
-		return Coordinat{X: 1, Y: 2}
-	}
-	return coords
 }
