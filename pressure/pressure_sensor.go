@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 )
 
-func PressureSensor(ctx context.Context, wg *sync.WaitGroup, meteoTransfer chan<- string) {
-	defer wg.Done()
+func PressureSensor(ctx context.Context, meteoTransfer chan<- string) {
 	sensorNumber := 0
 	for {
 		sensorNumber++

@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 )
 
-func SeismoSensor(ctx context.Context, wg *sync.WaitGroup, meteoTransfer chan<- string) {
-	defer wg.Done()
+func SeismoSensor(ctx context.Context, meteoTransfer chan<- string) {
 	sensorNumber := 0
 	for {
 		sensorNumber++

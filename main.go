@@ -10,11 +10,27 @@ import (
 
 func main() {
 	defer fmt.Println("Все датчики отработали сеанс завершен!")
-	meteoChanel := make(chan string)
+
+	pressureChanel := make(chan string, 8)
+	seismoChanel := make(chan string, 8)
+	wetChanel := make(chan string, 8)
+
 	wg := &sync.WaitGroup{}
+
 	pressureContex, presssureCancel := context.WithCancel(context.Background())
 	seismoContex, seismoCancel := context.WithCancel(context.Background())
 	wetContex, wetCancel := context.WithCancel(context.Background())
+
+	meteoData := []string{}
+	meteMu := sync.Mutex{}
+
+	defer func() {
+		meteMu.Lock()
+		defer meteMu.Unlock()
+		for _, val := range meteoData {
+			fmt.Println(val)
+		}
+	}()
 
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -32,29 +48,70 @@ func main() {
 	}()
 
 	wg.Add(1)
-	go pressure.PressureSensor(pressureContex, wg, meteoChanel)
+	go func() {
+		defer wg.Done()
+		meteMu.Lock()
+		meteoData = append(meteoData, "Начали сбор данных с датчика давления!")
+		meteMu.Unlock()
+		pressure.PressureSensor(pressureContex, pressureChanel)
+	}()
+
 	wg.Add(1)
-	go pressure.SeismoSensor(seismoContex, wg, meteoChanel)
+	go func() {
+		defer wg.Done()
+		meteMu.Lock()
+		meteoData = append(meteoData, "Начали сбор данных с сейсмо датчика!")
+		meteMu.Unlock()
+		pressure.SeismoSensor(seismoContex, seismoChanel)
+	}()
+
 	wg.Add(1)
-	go pressure.WetSensor(wetContex, wg, meteoChanel)
+	go func() {
+		defer wg.Done()
+		meteMu.Lock()
+		meteoData = append(meteoData, "Начали сбор данных с датчика влажности!")
+		meteMu.Unlock()
+		pressure.WetSensor(wetContex, wetChanel)
+	}()
 
 	go func() {
 		wg.Wait()
-		close(meteoChanel)
+		close(pressureChanel)
+		close(seismoChanel)
+		close(wetChanel)
 	}()
 
-	for meteoData := range meteoChanel {
-		fmt.Println(meteoData)
-	}
-
-	// Альтернатива с select
-	// for {
-	// 	metoData, ok := <-meteoChanel
-	// 	if !ok {
-	// 		return
-	// 	} else {
-	// 		fmt.Println(metoData)
-	// 	}
+	// Для общего канала
+	// for meteoData := range meteoChanel {
+	// 	fmt.Println(meteoData)
 	// }
 
+	for pressureChanel != nil || seismoChanel != nil || wetChanel != nil {
+		select {
+		case presureData, ok := <-pressureChanel:
+			if !ok {
+				pressureChanel = nil
+				continue
+			}
+			meteMu.Lock()
+			meteoData = append(meteoData, "Данные датчика давнеия получены: "+presureData)
+			meteMu.Unlock()
+		case seismoData, ok := <-seismoChanel:
+			if !ok {
+				seismoChanel = nil
+				continue
+			}
+			meteMu.Lock()
+			meteoData = append(meteoData, "Данные сейсмо датчика получены: "+seismoData)
+			meteMu.Unlock()
+		case wetData, ok := <-wetChanel:
+			if !ok {
+				wetChanel = nil
+				continue
+			}
+			meteMu.Lock()
+			meteoData = append(meteoData, "Данные датчика влажности получены: "+wetData)
+			meteMu.Unlock()
+		}
+	}
 }
