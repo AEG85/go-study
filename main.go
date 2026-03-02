@@ -25,6 +25,12 @@ func main() {
 }
 
 func addMessageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		if _, err := w.Write([]byte("Не верный метод запроса!")); err != nil {
+			fmt.Println("Не удалось записать тело ответа")
+		}
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println("Произошла ошибка при чтении: ", err)
@@ -39,6 +45,12 @@ func addMessageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteMessageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		if _, err := w.Write([]byte("Не верный метод запроса!")); err != nil {
+			fmt.Println("Не удалось записать тело ответа")
+		}
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println("Произошла ошибка при чтении: ", err)
@@ -66,6 +78,12 @@ func deleteMessageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func storageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		if _, err := w.Write([]byte("Не верный метод запроса!")); err != nil {
+			fmt.Println("Не удалось записать тело ответа")
+		}
+	}
 	storageList := ""
 	mu.Lock()
 	for _, val := range storage {
@@ -77,6 +95,12 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func messageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		if _, err := w.Write([]byte("Не верный метод запроса!")); err != nil {
+			fmt.Println("Не удалось записать тело ответа")
+		}
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Println("Произошла ошибка при чтении: ", err)
@@ -106,6 +130,12 @@ func messageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func testStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		if _, err := w.Write([]byte("Не верный метод запроса!")); err != nil {
+			fmt.Println("Не удалось записать тело ответа")
+		}
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		msg := "Не передано тело запроса!"
