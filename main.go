@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -9,13 +11,33 @@ import (
 	"sync"
 )
 
-var storage = make(map[int]string, 100)
+var storage = make(map[int]Message, 100)
 var mu = sync.Mutex{}
+
+type Message struct {
+	Title     string `json:"title"`
+	PostIndex int    `json:"postIndex"`
+	Text      string `json:"text"`
+	IsExpress bool   `json:"isExpress"`
+}
+
+func NewMessage(title string, postIndex int, text string, isExpress bool) Message {
+
+	if title == "" || postIndex == 0 || text == "" {
+		return Message{}
+	}
+	return Message{
+		Title:     title,
+		PostIndex: postIndex,
+		Text:      text,
+		IsExpress: isExpress,
+	}
+
+}
 
 func main() {
 	http.HandleFunc("/send", addMessageHandler)
 	http.HandleFunc("/delete/", deleteMessageHandler)
-	http.HandleFunc("/status/", testStatusHandler)
 	http.HandleFunc("/storage", storageHandler)
 	http.HandleFunc("/message/", messageHandler)
 	err := http.ListenAndServe(":9091", nil)
@@ -29,17 +51,24 @@ func addMessageHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		if _, err := w.Write([]byte("Не верный метод запроса!")); err != nil {
 			fmt.Println("Не удалось записать тело ответа")
+			return
 		}
-	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		fmt.Println("Произошла ошибка при чтении: ", err)
 		return
 	}
+	message := NewMessage("", 0, "", false)
+	if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			fmt.Println("Не получилось записать ответ")
+			return
+		}
+		return
+	}
+
 	mu.Lock()
 	randIndex := getRandIndex()
-	storage[randIndex] = string(body)
-	fmt.Println("Добавлено сообщеине:", string(body))
+	storage[randIndex] = message
+	fmt.Println("Добавлено сообщеине:", message)
 	printStorage()
 	mu.Unlock()
 }
@@ -84,14 +113,10 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println("Не удалось записать тело ответа")
 		}
 	}
-	storageList := ""
 	mu.Lock()
-	for _, val := range storage {
-		storageList += val + "\n"
-	}
-	mu.Unlock()
 	w.WriteHeader(http.StatusOK)
-	writeResponse(w, storageList)
+	writeResponse(w, storage)
+	mu.Unlock()
 }
 
 func messageHandler(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +136,9 @@ func messageHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		msg := "Вы передали не число!"
 		fmt.Println(msg, err)
-		writeResponse(w, msg)
+		if err := writeResponse(w, msg); err != nil {
+			fmt.Println(err)
+		}
 		return
 	}
 	mu.Lock()
@@ -120,7 +147,9 @@ func messageHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		msg := "Не найден элемент с таким ID!"
 		fmt.Println(msg, err)
-		writeResponse(w, msg)
+		if err := writeResponse(w, msg); err != nil {
+			fmt.Println(err)
+		}
 		mu.Unlock()
 		return
 	}
@@ -129,74 +158,17 @@ func messageHandler(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, msg)
 }
 
-func testStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		if _, err := w.Write([]byte("Не верный метод запроса!")); err != nil {
-			fmt.Println("Не удалось записать тело ответа")
-		}
-	}
-	body, err := io.ReadAll(r.Body)
+func writeResponse(w http.ResponseWriter, msg any) error {
+	message, err := json.Marshal(msg)
 	if err != nil {
-		msg := "Не передано тело запроса!"
-		fmt.Println(msg)
-		w.WriteHeader(http.StatusBadRequest)
-		writeResponse(w, msg)
-		return
+		return errors.New("Не получилось разобрать JSON")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(message); err != nil {
+		return errors.New("е получилось записать ответ!")
 	}
 
-	statusCode, err := strconv.Atoi(string(body))
-	if err != nil {
-		msg := "Статус код должен быть числом! Вы передали:"
-		fmt.Println(msg, string(body))
-		writeResponse(w, msg)
-		return
-	}
-	switch statusCode {
-	case 200:
-		w.WriteHeader(http.StatusOK)
-		msg := "Получен ответ!"
-		writeResponse(w, msg)
-	case 400:
-		w.WriteHeader(http.StatusBadRequest)
-		msg := "Ошибка в запросе!"
-		writeResponse(w, msg)
-	case 500:
-		w.WriteHeader(http.StatusInternalServerError)
-		msg := "Ошибка сервера!"
-		writeResponse(w, msg)
-	case 404:
-		w.WriteHeader(http.StatusNotFound)
-		msg := "Запрашиваемый ресурс не найден!"
-		writeResponse(w, msg)
-	case 403:
-		w.WriteHeader(http.StatusForbidden)
-		msg := "Недостаточно прав!"
-		writeResponse(w, msg)
-	case 201:
-		w.WriteHeader(http.StatusCreated)
-		msg := "Элемент добавлен!"
-		writeResponse(w, msg)
-	case 409:
-		w.WriteHeader(http.StatusConflict)
-		msg := "Нельзя обновить элемент с такими данными, конфликт!"
-		writeResponse(w, msg)
-	case 301:
-		w.WriteHeader(http.StatusMovedPermanently)
-		msg := "Ресурс перенесен постоянно!"
-		writeResponse(w, msg)
-	case 302:
-		w.WriteHeader(http.StatusFound)
-		msg := "Ресурс верменно перенесен!"
-		writeResponse(w, msg)
-	}
-}
-
-func writeResponse(w http.ResponseWriter, msg string) {
-	_, err := w.Write([]byte(msg))
-	if err != nil {
-		fmt.Println("Не получилось записать ответ!")
-	}
+	return nil
 }
 
 func getRandIndex() int {
