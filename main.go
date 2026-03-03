@@ -113,9 +113,58 @@ func storageHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Println("Не удалось записать тело ответа")
 		}
 	}
+
+	filteredStorage := make(map[int]Message)
+
+	postIndexParam := r.URL.Query().Get("postIndex")
+	isExpressParam := r.URL.Query().Get("isExpress")
+
 	mu.Lock()
-	w.WriteHeader(http.StatusOK)
-	writeResponse(w, storage)
+
+	var postIndex int = -1
+	if postIndexParam != "" {
+		postIn, err := strconv.Atoi(postIndexParam)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeResponse(w, "Индекс должен быть числом")
+			return
+		}
+		postIndex = postIn
+	}
+
+	var isExpess bool
+	if isExpressParam != "" {
+		isExp, err := strconv.ParseBool(isExpressParam)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeResponse(w, "Срочность должна быть true или false")
+			return
+		}
+		isExpess = isExp
+	}
+
+	for key, val := range storage {
+		if postIndexParam != "" && isExpressParam != "" {
+			if postIndex == val.PostIndex && isExpess == val.IsExpress {
+				filteredStorage[key] = val
+			}
+		} else if postIndexParam == "" && isExpressParam != "" {
+			if isExpess == val.IsExpress {
+				filteredStorage[key] = val
+			}
+		} else if postIndexParam != "" {
+			if postIndex == val.PostIndex {
+				filteredStorage[key] = val
+			}
+		}
+	}
+
+	if len(filteredStorage) >= 0 && (isExpressParam != "" || postIndexParam != "") {
+		writeResponse(w, filteredStorage)
+	} else {
+		writeResponse(w, storage)
+	}
+
 	mu.Unlock()
 }
 
