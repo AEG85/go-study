@@ -16,8 +16,9 @@ func CreateTable(ctx context.Context, conn *pgx.Conn) error {
 			publication_year SMALLINT NOT NULL,
 			is_read BOOLEAN NOT NULL,
 			date_added TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			date_readed TIMESTAMPTZ
+			date_readed TIMESTAMPTZ,
 
+			UNIQUE(title, author, publication_year)
 		);
 	`
 	_, err := conn.Exec(ctx, sqlQuery)
