@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	simpleconnetion "study/feature_postgres/simple_connetion"
+	simplesql "study/feature_postgres/simple_sql"
 )
 
 func main() {
 	ctx := context.Background()
-	conn, err := simpleconnetion.CheckConnection(ctx)
+	conn, err := simpleconnetion.CreateConnection(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -16,4 +17,11 @@ func main() {
 		panic(err)
 	}
 	fmt.Println("Connection success!")
+
+	if err := simplesql.CreateTable(ctx, conn); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Table created succesfull!")
+
 }
