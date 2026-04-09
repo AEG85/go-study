@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS products (
+    title VARCHAR(200) NOT NULL,
+    price DECIMAL(10,2) NOT NULL
+);
