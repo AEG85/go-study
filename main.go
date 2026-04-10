@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
+	"strings"
+	"study/feature_postgres/models"
 	simpleconnetion "study/feature_postgres/simple_connetion"
 	simplesql "study/feature_postgres/simple_sql"
 
@@ -25,56 +29,62 @@ func main() {
 	}
 
 	fmt.Println("Table created succesfull!")
-	// Добавление книги
-	// book := models.Book{
-	// 	Title:           "Колобок2",
-	// 	Author:          "Нород",
-	// 	Review:          "Очень хорошая книжка",
-	// 	PublicationYear: 1010,
-	// }
-	// commandTag, err := simplesql.InsertRow(ctx, conn, book)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println(commandTag)
-	// fmt.Println("Book added!")
 
-	// Обновление книги
-	// timeReaded := time.Now()
-	// book := models.Book{
-	// 	ID:              1,
-	// 	Title:           "Ватсон",
-	// 	Author:          "Артур Конендоил",
-	// 	Review:          "Очень очень хорошая книжка",
-	// 	IsRead:          true,
-	// 	DateReaded:      &timeReaded,
-	// 	PublicationYear: 1979,
-	// }
-	// commandTag, err := simplesql.UpdateRow(ctx, conn, book)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println(commandTag)
-	// fmt.Println("Book updated!")
-
-	// Удаление книг
-	// booksIds := []int{1, 5}
-
-	// commandTag, err := simplesql.DeleteRow(ctx, conn, booksIds)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println(commandTag)
-	// fmt.Println("Books deleted!")
-
-	// Получение всех книг
-	books, err := simplesql.SelectRows(ctx, conn)
-	if err != nil {
-		panic(err)
+	createUser := os.Getenv("NEW_USER")
+	if createUser == "" {
+		fmt.Println("Не задана переменная окружения NEW_USER")
+		return
 	}
-	for i := range books {
-		pp.Println(books[i])
-	}
-	fmt.Println("Books selected!")
 
+	if createUser == "YES" {
+		scanner := bufio.NewScanner(os.Stdin)
+		var name string
+		for {
+			fmt.Print("Введите полное имя пользоватлея: ")
+			scanner.Scan()
+			name = scanner.Text()
+			name = strings.TrimSpace(name)
+			if name == "" {
+				fmt.Println("Вы не ввели полное имя")
+				continue
+			}
+			words := strings.Fields(name)
+			if len(words) < 2 {
+				fmt.Println("Нужно указать минимум два слова")
+				continue
+			}
+			break
+		}
+
+		var phoneNember string
+
+		fmt.Print("Введите номер телефона: ")
+		scanner.Scan()
+		phoneNember = scanner.Text()
+		phoneNember = strings.TrimSpace(phoneNember)
+
+		// Добавление пользователя
+		user := models.User{
+			FullName:    name,
+			PhoneNumber: phoneNember,
+		}
+		commandTag, err := simplesql.InsertRow(ctx, conn, user)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(commandTag)
+		fmt.Println("User added!")
+	}
+
+	if createUser == "NO" {
+		// Получение всех пользователей
+		users, err := simplesql.SelectRows(ctx, conn)
+		if err != nil {
+			panic(err)
+		}
+		for i := range users {
+			pp.Println(users[i])
+		}
+		fmt.Println("Users selected!")
+	}
 }

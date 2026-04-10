@@ -7,33 +7,27 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func SelectRows(ctx context.Context, conn *pgx.Conn) ([]models.Book, error) {
+func SelectRows(ctx context.Context, conn *pgx.Conn) ([]models.User, error) {
 	sqlQuery := `
-		SELECT id, title, author, is_read, review, date_added, date_readed, publication_year  
-		FROM  books
-		ORDER BY title ASC
+		SELECT id, full_name, phone_number  
+		FROM  users
+		ORDER BY full_name ASC
 	`
 	rows, err := conn.Query(ctx, sqlQuery)
 	if err != nil {
-		return []models.Book{}, err
+		return []models.User{}, err
 	}
 	defer rows.Close()
 
-	books := []models.Book{}
+	users := []models.User{}
 	for rows.Next() {
-		var book models.Book
+		var user models.User
 		rows.Scan(
-			&book.ID,
-			&book.Title,
-			&book.Author,
-			&book.IsRead,
-			&book.Review,
-			&book.DateAdded,
-			&book.DateReaded,
-			&book.PublicationYear,
+			&user.ID,
+			&user.FullName,
+			&user.PhoneNumber,
 		)
-		books = append(books, book)
+		users = append(users, user)
 	}
-	return books, nil
-
+	return users, nil
 }
