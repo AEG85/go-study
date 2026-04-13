@@ -8,4 +8,6 @@ COPY . .
 
 RUN go mod tidy
 
-CMD [ "make", "run-http-app" ]
+RUN go build -o /app/exe main.go
+
+CMD [ "/app/exe" ]

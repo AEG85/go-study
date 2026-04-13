@@ -1,23 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
-	"sync"
+	"study/models"
+	"study/pgx/connection"
+	"study/pgx/requests"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 )
-
-type Employee struct {
-	ID       int    `json:"id"`
-	FullName string `json:"fullName"`
-	Position string `json:"position"`
-}
-
-var Employees = make(map[int]Employee)
-var mu sync.RWMutex = sync.RWMutex{}
 
 const (
 	WrongHttpMethod    = "Неправильный http метод в запросе"
@@ -28,19 +23,39 @@ const (
 )
 
 func main() {
+	ctx := context.Background()
+	conn, err := connection.CreateConnection(ctx)
+	if err != nil {
+		panic("Не удалось подключиться к БД!")
+	}
+
+	if err := requests.CreateTable(ctx, conn); err != nil {
+		panic("Не получилось создать таблицу сотрудников!")
+	}
+
 	r := chi.NewRouter()
 	r.Route("/employee", func(r chi.Router) {
-		r.Get("/", getEmployeesListHandler)
-		r.Post("/", addEmployeeHandler)
-		r.Get("/{id}", getEmployeeByID)
-		r.Delete("/{id}", deleteEmployeeHandler)
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			getEmployeesListHandler(w, r, ctx, conn)
+		})
+		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+			addEmployeeHandler(w, r, ctx, conn)
+		})
+		r.Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+			getEmployeeByID(w, r, ctx, conn)
+		})
+		r.Delete("/{id}", func(w http.ResponseWriter, r *http.Request) {
+			deleteEmployeeHandler(w, r, ctx, conn)
+		})
 	})
-	r.Get("/", getEmployeesListHandler)
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		getEmployeesListHandler(w, r, ctx, conn)
+	})
 
 	http.ListenAndServe(":9091", r)
 }
 
-func getEmployeeByID(w http.ResponseWriter, r *http.Request) {
+func getEmployeeByID(w http.ResponseWriter, r *http.Request, ctx context.Context, conn *pgx.Conn) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -49,13 +64,11 @@ func getEmployeeByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mu.RLock()
-	defer mu.RUnlock()
-
-	employee, exists := Employees[id]
-	if !exists {
+	employee, err := requests.SelectRow(ctx, conn, id)
+	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Сотрудник не найден"))
+		fmt.Println(err)
 		return
 	}
 
@@ -64,8 +77,8 @@ func getEmployeeByID(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(employee)
 }
 
-func addEmployeeHandler(w http.ResponseWriter, r *http.Request) {
-	employee := Employee{}
+func addEmployeeHandler(w http.ResponseWriter, r *http.Request, ctx context.Context, conn *pgx.Conn) {
+	employee := models.Employee{}
 	if err := json.NewDecoder(r.Body).Decode(&employee); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		if _, err := w.Write([]byte(WrongJson)); err != nil {
@@ -74,21 +87,31 @@ func addEmployeeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	Employees[employee.ID] = employee
+
+	_, err := requests.InsertRow(ctx, conn, employee)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Не удалось добавить сотрудника"))
+		fmt.Println(err)
+		return
+	}
 	if _, err := w.Write([]byte("Сотрудник добавлен успешно!")); err != nil {
 		fmt.Println(CantWriteResponse)
 		return
 	}
 }
 
-func getEmployeesListHandler(w http.ResponseWriter, r *http.Request) {
-	mu.RLock()
-	defer mu.RUnlock()
-
+func getEmployeesListHandler(w http.ResponseWriter, r *http.Request, ctx context.Context, conn *pgx.Conn) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(Employees); err != nil {
+
+	employees, err := requests.SelectRows(ctx, conn)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Println("Не получилось достать сотрудников из базы")
+	}
+
+	if err := json.NewEncoder(w).Encode(employees); err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		if _, err := w.Write([]byte(InvalidJson)); err != nil {
 			fmt.Println(CantWriteResponse)
@@ -98,7 +121,7 @@ func getEmployeesListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func deleteEmployeeHandler(w http.ResponseWriter, r *http.Request) {
+func deleteEmployeeHandler(w http.ResponseWriter, r *http.Request, ctx context.Context, conn *pgx.Conn) {
 	idStr := chi.URLParam(r, "id")
 	employeeID, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -107,11 +130,8 @@ func deleteEmployeeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	_, ok := Employees[employeeID]
-	if !ok {
+	employee, err := requests.SelectRow(ctx, conn, employeeID)
+	if err != nil {
 		if _, err := w.Write([]byte("Токого сотрудника не существует")); err != nil {
 			fmt.Println(CantWriteResponse)
 			return
@@ -119,9 +139,19 @@ func deleteEmployeeHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Такой книги не существует")
 		return
 	}
-	delete(Employees, employeeID)
-	if _, err := w.Write([]byte("Сотрудник с ID " + idStr + " удален")); err != nil {
+
+	employeeSlice := []int{employee.ID}
+	_, err = requests.DeleteRow(ctx, conn, employeeSlice)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Не удалось удалить сотрудника"))
+		fmt.Println(err)
+		return
+	}
+
+	if _, err := w.Write([]byte("Сотрудник с ID " + idStr + " удален ")); err != nil {
 		fmt.Println(CantWriteResponse)
 		return
 	}
+
 }
