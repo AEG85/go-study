@@ -1,7 +1,11 @@
-FROM golang:1.26.1
+FROM golang:1.26.1-alpine
+
+RUN apk add --no-cache make
 
 WORKDIR /app
 
 COPY . .
 
-CMD [ "go", "run", "main.go" ]
+RUN go mod tidy
+
+CMD [ "make", "run-http-app" ]
