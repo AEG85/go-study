@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"study/models"
 	"study/pgx/connection"
@@ -23,6 +24,7 @@ const (
 )
 
 func main() {
+	fmt.Println("Переменная окружения: ", os.Getenv("CONN_STRING"))
 	ctx := context.Background()
 	conn, err := connection.CreateConnection(ctx)
 	if err != nil {
