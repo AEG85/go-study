@@ -16,5 +16,5 @@ postgres-up:
 		--rm \
 		-p 5432:5432 \
 		-e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
-		-v out/pgdata:/var/lib/postgresql \
+		-v ./out/pgdata:/var/lib/postgresql \
 		postgres:18.3-bookworm
