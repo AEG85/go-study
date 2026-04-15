@@ -3,125 +3,150 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"strconv"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-type Employee struct {
-	ID       int    `json:"id"`
-	FullName string `json:"fullName"`
-	Position string `json:"position"`
-}
-
-var Employees = make(map[int]Employee)
+var Strings = []string{}
 var mu sync.RWMutex = sync.RWMutex{}
 
 const (
-	WrongHttpMethod    = "Неправильный http метод в запросе"
-	CantWriteResponse  = "Не получилось записать ответ"
-	WrongJson          = "Неверно сформирован json в запросе"
-	InvalidRequestBody = "Не получилось прочитать тело запроса"
-	InvalidJson        = "Не получилось преобразовать данные в json формат"
+	CantWriteResponse = "Не получилось записать ответ"
+	InvalidJson       = "Не получилось преобразовать данные в json формат"
 )
 
 func main() {
 	r := chi.NewRouter()
-	r.Route("/employee", func(r chi.Router) {
-		r.Get("/", getEmployeesListHandler)
-		r.Post("/", addEmployeeHandler)
-		r.Get("/{id}", getEmployeeByID)
-		r.Delete("/{id}", deleteEmployeeHandler)
+	logger, loggerClose, err := NewLogger("DEBUG")
+	if err != nil {
+		panic(err)
+	}
+	defer loggerClose()
+
+	r.Route("/strings", func(r chi.Router) {
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			getStrings(w, r, logger)
+		})
+		r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+			addString(w, r, logger)
+		})
 	})
-	r.Get("/", getEmployeesListHandler)
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		getStrings(w, r, logger)
+	})
 
 	http.ListenAndServe(":9091", r)
 }
 
-func getEmployeeByID(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
+func addString(w http.ResponseWriter, r *http.Request, logger *zap.Logger) {
+
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("ID должен быть числом"))
+		logger.Error("Произошла ошибка при чтении: ", zap.Error(err))
 		return
 	}
+	startTime := time.Now()
+	logger.Info("Входящий запрос:",
+		zap.String("method", r.Method),
+		zap.String("endpoint", r.URL.Path),
+		zap.String("remote_addr", r.RemoteAddr),
+		zap.String("request_body", string(body)),
+		zap.Time("request_time", startTime),
+	)
 
-	mu.RLock()
-	defer mu.RUnlock()
+	mu.Lock()
+	defer mu.Unlock()
 
-	employee, exists := Employees[id]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("Сотрудник не найден"))
-		return
-	}
+	Strings = append(Strings, string(body))
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(employee)
+	_, err = w.Write([]byte("Элемент добавлен"))
+	if err != nil {
+		logger.Error("Не получилось отправить ответ", zap.Error(err))
+	}
+
+	duration := time.Since(startTime)
+	logger.Info("Добавлена новая строка",
+		zap.String("added_value", string(body)),
+		zap.Int("slice_length", len(Strings)),
+		zap.Duration("processing_time", duration),
+	)
 }
 
-func addEmployeeHandler(w http.ResponseWriter, r *http.Request) {
-	employee := Employee{}
-	if err := json.NewDecoder(r.Body).Decode(&employee); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte(WrongJson)); err != nil {
-			fmt.Println(CantWriteResponse)
-			return
-		}
+func getStrings(w http.ResponseWriter, r *http.Request, logger *zap.Logger) {
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.Error("Произошла ошибка при чтении: ", zap.Error(err))
 		return
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	Employees[employee.ID] = employee
-	if _, err := w.Write([]byte("Сотрудник добавлен успешно!")); err != nil {
-		fmt.Println(CantWriteResponse)
-		return
-	}
-}
+	startTime := time.Now()
 
-func getEmployeesListHandler(w http.ResponseWriter, r *http.Request) {
+	logger.Info("Входящий запрос:",
+		zap.String("method", r.Method),
+		zap.String("endpoint", r.URL.Path),
+		zap.String("remote_addr", r.RemoteAddr),
+		zap.String("request_body", string(body)),
+		zap.Time("request_time", startTime),
+	)
 	mu.RLock()
 	defer mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(Employees); err != nil {
-		w.WriteHeader(http.StatusNoContent)
-		if _, err := w.Write([]byte(InvalidJson)); err != nil {
-			fmt.Println(CantWriteResponse)
-			return
-		}
+	if err := json.NewEncoder(w).Encode(Strings); err != nil {
+		logger.Error("Ошибка кодирования JSON", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	duration := time.Since(startTime)
+	logger.Info("Строки переданы успешно!",
+		zap.Duration("processing_time", duration),
+	)
 }
 
-func deleteEmployeeHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	employeeID, err := strconv.Atoi(idStr)
+func NewLogger(loggerLevel string) (*zap.Logger, func() error, error) {
+	lvl := zap.NewAtomicLevel()
+	if err := lvl.UnmarshalText([]byte(loggerLevel)); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal log level: %w", err)
+	}
+
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		return nil, nil, fmt.Errorf("mkdir log folder: %w", err)
+	}
+
+	timestamp := time.Now().UTC().Format("2006-01-02T15-04-05.000000")
+	logFilePath := filepath.Join("logs", fmt.Sprintf("%s.log", timestamp))
+
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("ID должен быть числом"))
-		return
+		return nil, nil, fmt.Errorf("open log file: %w", err)
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
+	cfg := zap.NewDevelopmentEncoderConfig()
+	cfg.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02T15:04:05.000000")
 
-	_, ok := Employees[employeeID]
-	if !ok {
-		if _, err := w.Write([]byte("Токого сотрудника не существует")); err != nil {
-			fmt.Println(CantWriteResponse)
-			return
-		}
-		fmt.Println("Такой книги не существует")
-		return
-	}
-	delete(Employees, employeeID)
-	if _, err := w.Write([]byte("Сотрудник с ID " + idStr + " удален")); err != nil {
-		fmt.Println(CantWriteResponse)
-		return
-	}
+	encoder := zapcore.NewConsoleEncoder(cfg)
+
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), lvl),
+		zapcore.NewCore(encoder, zapcore.AddSync(logFile), lvl),
+	)
+
+	logger := zap.New(
+		core,
+		zap.AddCaller(),
+		zap.AddStacktrace(zapcore.ErrorLevel),
+	)
+
+	return logger, logFile.Close, nil
 }
